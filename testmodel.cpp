@@ -1,118 +1,100 @@
-#include <bits/stdc++.h>
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <string>
+#include <unordered_set>
+
 using namespace std;
 
-static const long long MOD = 1000000007;
-
-// We will store all "max-gap" permutations in a global vector.
-// - If N is even, it has size 2.
-// - If N is odd, it has size 2*N.
-static vector<vector<int>> allPerms; // allPerms[k] is a permutation of [0..N-1].
-
-// Build the 2 permutations that achieve min-gap = N/2 when N is even
-// A known pattern for an even N is something like [N/2, 0, N/2+1, 1, ..., N-1, (N/2 - 1)].
-static void buildMaxGapEven(int N) {
-    // One systematic way is:
-    //   p[2k] = (N/2 + k) mod N   (for k=0..N/2-1)
-    //   p[2k+1] = k              (for k=0..N/2-1)
-    // That yields one valid permutation 'A'.
-    // The other valid permutation 'B' is simply the reverse of 'A'.
-    vector<int> permA(N), permB(N);
-    int half = N/2;
-    for (int k = 0; k < half; k++) {
-        permA[2*k]   = half + k; 
-        permA[2*k+1] = k;
-    }
-    permB = permA;
-    reverse(permB.begin(), permB.end());
-
-    allPerms.push_back(permA);
-    allPerms.push_back(permB);
-}
-
-// Build the 2N permutations that achieve min-gap = (N-1)/2 when N is odd
-// We step around the circle with step size M=(N-1)/2 and also with step (N - M).
-static void buildMaxGapOdd(int N) {
-    int M = (N - 1) / 2;  // step size
-    // We do 2 permutations for each start s in [0..N-1]:
-    // 1) stepping by +M mod N
-    // 2) stepping by -M mod N  (which is the same as (N-M) mod N)
-    // Each yields min-gap >= M, and these collectively are all 2N distinct solutions.
-    allPerms.reserve(2*N);  // to avoid repeated reallocation
-
-    for(int start=0; start<N; start++){
-        // Forward step: +M mod N
-        {
-            vector<int> perm(N);
-            int cur = start;
-            for(int i=0; i<N; i++){
-                perm[i] = cur;
-                cur = (cur + M) % N;
+// Count the number of pairs of nodes that can reach each other
+long long countPairs(const vector<unordered_set<int>>& graph, const unordered_set<int>& removed_nodes) {
+    vector<bool> visited(graph.size(), false);
+    long long total_pairs = 0;
+    
+    for (int i = 1; i < graph.size(); i++) {
+        if (!removed_nodes.count(i) && !visited[i]) {
+            int component_size = 0;
+            queue<int> q;
+            q.push(i);
+            visited[i] = true;
+            
+            while (!q.empty()) {
+                int node = q.front();
+                q.pop();
+                component_size++;
+                
+                for (int neighbor : graph[node]) {
+                    if (!removed_nodes.count(neighbor) && !visited[neighbor]) {
+                        visited[neighbor] = true;
+                        q.push(neighbor);
+                    }
+                }
             }
-            allPerms.push_back(std::move(perm));
-        }
-        // Backward step: + (N - M) mod N
-        {
-            vector<int> perm(N);
-            int cur = start;
-            int step = N - M; // same as -M mod N
-            for(int i=0; i<N; i++){
-                perm[i] = cur;
-                cur = (cur + step) % N;
-            }
-            allPerms.push_back(std::move(perm));
+            
+            // For a component of size k, there are k*(k-1)/2 pairs
+            total_pairs += 1LL * component_size * (component_size - 1) / 2;
         }
     }
+    
+    return total_pairs;
 }
 
-// Check if a given permutation perm satisfies all K constraints: p_i = j.
-static bool checkConstraints(const vector<int>& perm, const vector<pair<int,int>>& constraints) {
-    for(const auto &c : constraints){
-        int i = c.first;
-        int j = c.second;
-        if(perm[i] != j) return false;
-    }
-    return true;
-}
-
-int main(){
+int main() {
     ios_base::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    int T, N;
-    cin >> T >> N;  
-    // We assume the problem statement: "First line: T N", then T testcases all with the same N.
-
-    // Pre-build all permutations in S (the set that achieves the maximum min-gap).
-    if(N % 2 == 0) {
-        // even N
-        buildMaxGapEven(N);
-    } else {
-        // odd N
-        // We get exactly 2N permutations.
-        buildMaxGapOdd(N);
+    cin.tie(NULL);
+    
+    int N, M;
+    cin >> N >> M;
+    
+    string s;
+    cin >> s;
+    
+    // Use adjacency list for efficient edge operations
+    vector<unordered_set<int>> graph(N + 1);
+    for (int i = 0; i < M; i++) {
+        int u, v;
+        cin >> u >> v;
+        graph[u].insert(v);
+        graph[v].insert(u);
     }
-
-    while(T--){
-        int K; 
-        cin >> K;
-
-        // Read the constraints p_i = j
-        vector<pair<int,int>> constraints(K);
-        for(int i=0; i<K; i++){
-            int idx, val;
-            cin >> idx >> val;
-            constraints[i] = {idx, val};
-        }
-
-        // Check each candidate permutation in allPerms.
-        long long countValid = 0;
-        for(const auto &perm : allPerms){
-            if(checkConstraints(perm, constraints)) {
-                countValid++;
+    
+    unordered_set<int> removed_nodes;
+    vector<long long> result(N);
+    
+    for (int t = 1; t <= N; t++) {
+        // Count pairs before removing node t
+        result[t - 1] = countPairs(graph, removed_nodes);
+        
+        // If s[t-1] = '1', add edges between all pairs of neighbors
+        if (s[t - 1] == '1') {
+            vector<int> neighbors;
+            for (int neighbor : graph[t]) {
+                if (!removed_nodes.count(neighbor)) {
+                    neighbors.push_back(neighbor);
+                }
+            }
+            
+            // Connect all neighbors with each other
+            for (int i = 0; i < neighbors.size(); i++) {
+                for (int j = i + 1; j < neighbors.size(); j++) {
+                    graph[neighbors[i]].insert(neighbors[j]);
+                    graph[neighbors[j]].insert(neighbors[i]);
+                }
             }
         }
-        cout << (countValid % MOD) << "\n";
+        
+        // Remove node t from the graph
+        for (int neighbor : graph[t]) {
+            graph[neighbor].erase(t);
+        }
+        graph[t].clear();
+        removed_nodes.insert(t);
     }
-
+    
+    // Output results
+    for (int t = 0; t < N; t++) {
+        cout << result[t] << endl;
+    }
+    
     return 0;
 }
