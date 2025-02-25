@@ -1,103 +1,136 @@
-#include <bits/stdc++.h>
+#include <iostream>
+#include <vector>
+#include <string>
+#include <unordered_map>
+
 using namespace std;
 
-// A simple function to get the number of connected pairs
-// by BFS or DSU each time. We do BFS here for simplicity.
-long long countConnectedPairs(const vector<vector<int>> &graph, const vector<bool> &alive, int N) {
-    long long result = 0;
-    vector<bool> visited(N+1, false);
-    for(int node = 1; node <= N; node++){
-        if(alive[node] && !visited[node]) {
-            // BFS (or DFS) to find size of this component
-            queue<int>q;
-            q.push(node);
-            visited[node] = true;
-            long long compSize = 0;
-            while(!q.empty()){
-                int u = q.front();
-                q.pop();
-                compSize++;
-                // traverse neighbors
-                for(int v: graph[u]){
-                    if(alive[v] && !visited[v]){
-                        visited[v] = true;
-                        q.push(v);
+class DSU {
+private:
+    vector<int> parent, size;
+
+public:
+    DSU(int n) : parent(n+1), size(n+1, 1) {
+        for (int i = 1; i <= n; i++)
+            parent[i] = i;
+    }
+
+    int find(int x) {
+        if (parent[x] != x)
+            parent[x] = find(parent[x]);
+        return parent[x];
+    }
+
+    void unite(int x, int y) {
+        int rx = find(x);
+        int ry = find(y);
+        
+        if (rx == ry) return;
+        
+        if (size[rx] < size[ry]) {
+            parent[rx] = ry;
+            size[ry] += size[rx];
+        } else {
+            parent[ry] = rx;
+            size[rx] += size[ry];
+        }
+    }
+};
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    
+    int n, m;
+    cin >> n >> m;
+    
+    string s;
+    cin >> s;
+    
+    // Key insight: Precompute all edges that will exist at each timestep
+    vector<vector<pair<int, int>>> timestep_edges(n+1);
+    
+    // Read original edges
+    vector<pair<int, int>> edges;
+    for (int i = 0; i < m; i++) {
+        int u, v;
+        cin >> u >> v;
+        if (u > v) swap(u, v);
+        edges.push_back({u, v});
+    }
+    
+    // For each node, store its neighbors in the original graph
+    vector<vector<int>> adj(n+1);
+    for (auto [u, v] : edges) {
+        adj[u].push_back(v);
+        adj[v].push_back(u);
+    }
+    
+    // Precompute all edges at each timestep
+    // Start with all edges and simulate removals
+    vector<bool> removed(n+1, false);
+    for (int t = 1; t <= n; t++) {
+        // Store original edges between nodes that still exist
+        for (auto [u, v] : edges) {
+            if (!removed[u] && !removed[v]) {
+                timestep_edges[t-1].push_back({u, v});
+            }
+        }
+        
+        // If s[t-1] = '1', record the edges to add between its neighbors
+        if (s[t-1] == '1') {
+            vector<int> neighbors;
+            for (int neighbor : adj[t]) {
+                if (!removed[neighbor]) {
+                    neighbors.push_back(neighbor);
+                }
+            }
+            
+            // Add these edges to all future timesteps
+            for (size_t i = 0; i < neighbors.size(); i++) {
+                for (size_t j = i+1; j < neighbors.size(); j++) {
+                    int u = neighbors[i];
+                    int v = neighbors[j];
+                    if (u > v) swap(u, v);
+                    for (int future_t = t; future_t <= n; future_t++) {
+                        timestep_edges[future_t-1].push_back({u, v});
                     }
                 }
             }
-            // for a component of size compSize,
-            // number of internal pairs = compSize*(compSize-1)/2
-            result += compSize*(compSize-1)/2;
         }
+        
+        // Mark node t as removed
+        removed[t] = true;
     }
-    return result;
-}
-
-int main(){
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    int N,M;
-    cin >> N >> M;
-    string s;
-    cin >> s; // s[i] in {'0','1'}, i from 0..N-1
-
-    // Build adjacency
-    vector<vector<int>> graph(N+1);
-    for(int i=0; i<M; i++){
-        int u,v;
-        cin >> u >> v;
-        graph[u].push_back(v);
-        graph[v].push_back(u);
-    }
-
-    // We'll keep a "alive[node]" to indicate if node is still in the graph.
-    vector<bool> alive(N+1, true);
-
-    // Initially, count the pairs in the full graph
-    long long currentPairs = countConnectedPairs(graph, alive, N);
-
-    // For t from 1..N:
-    for(int t=1; t<=N; t++){
-        // Output the number of pairs "just before removing node t"
-        cout << currentPairs << "\n";
-
-        // Node t is about to be removed:
-        // If s[t-1] == '1', we add edges among neighbors of t
-        if(s[t-1] == '1'){
-            // gather neighbors
-            vector<int> nbrs;
-            for(int neigh : graph[t]){
-                if(alive[neigh]){
-                    nbrs.push_back(neigh);
-                }
-            }
-            // add edges among these neighbors
-            // For each pair (x,y) in nbrs, add an edge x<->y to 'graph'.
-            // But we should only add it if both x,y are alive and x!=t,y!=t
-            // (Node t is being removed anyway, so it's immaterial to t.)
-            // We'll do a double loop. For a large test, this can be huge,
-            // but for the sample it's fine.
-            for(int i=0; i<(int)nbrs.size(); i++){
-                for(int j=i+1; j<(int)nbrs.size(); j++){
-                    int x = nbrs[i], y = nbrs[j];
-                    // We add each direction if not already present:
-                    // (In a super-careful approach, we might store a set
-                    // of adjacency for each node to check duplicates. 
-                    // For small input we won't break anything if we add duplicates,
-                    // but let's do a small check to avoid repeated edges.)
-                    graph[x].push_back(y);
-                    graph[y].push_back(x);
-                }
-            }
+    
+    // Compute the answers
+    vector<long long> result(n);
+    for (int t = 1; t <= n; t++) {
+        DSU dsu(n);
+        
+        // Process edges for this timestep
+        for (auto [u, v] : timestep_edges[t-1]) {
+            dsu.unite(u, v);
         }
-
-        // Now physically remove node t: set alive[t] = false
-        alive[t] = false;
-
-        // Recompute the pair-count for the updated graph
-        currentPairs = countConnectedPairs(graph, alive, N);
+        
+        // Count connected pairs
+        unordered_map<int, int> component_size;
+        for (int i = t; i <= n; i++) {
+            component_size[dsu.find(i)]++;
+        }
+        
+        long long pairs = 0;
+        for (auto& [root, size] : component_size) {
+            pairs += (1LL * size * (size - 1)) / 2;
+        }
+        
+        result[t-1] = pairs;
     }
-
+    
+    // Output results
+    for (int i = 0; i < n; i++) {
+        cout << result[i] << endl;
+    }
+    
     return 0;
 }
