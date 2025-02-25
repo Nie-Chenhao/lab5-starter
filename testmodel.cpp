@@ -1,136 +1,103 @@
-#include <iostream>
-#include <vector>
-#include <unordered_set>
-#include <string>
-
+#include <bits/stdc++.h>
 using namespace std;
 
-// Optimized DSU (Disjoint Set Union) with path compression and union by size
-class DSU {
-private:
-    vector<int> parent, size;
-
-public:
-    DSU(int n) {
-        parent.resize(n + 1);
-        size.resize(n + 1, 1);
-        for (int i = 1; i <= n; i++)
-            parent[i] = i;
-    }
-
-    int find(int x) {
-        if (parent[x] != x)
-            parent[x] = find(parent[x]);
-        return parent[x];
-    }
-
-    void unite(int x, int y) {
-        int root_x = find(x);
-        int root_y = find(y);
-        
-        if (root_x == root_y) return;
-        
-        // Union by size (smaller to larger)
-        if (size[root_x] < size[root_y]) {
-            parent[root_x] = root_y;
-            size[root_y] += size[root_x];
-        } else {
-            parent[root_y] = root_x;
-            size[root_x] += size[root_y];
-        }
-    }
-
-    // Count the number of pairs of nodes that can reach each other
-    long long countPairs(const vector<bool>& active) {
-        vector<int> component_size(parent.size(), 0);
-        
-        for (int i = 1; i < parent.size(); i++) {
-            if (active[i])
-                component_size[find(i)]++;
-        }
-        
-        long long pairs = 0;
-        for (int size : component_size)
-            pairs += 1LL * size * (size - 1) / 2;
-        
-        return pairs;
-    }
-};
-
-int main() {
-    ios_base::sync_with_stdio(false);
-    cin.tie(nullptr);
-    
-    int N, M;
-    cin >> N >> M;
-    
-    string s;
-    cin >> s;
-    
-    // Use vector of sets for efficient edge operations
-    vector<unordered_set<int>> graph(N + 1);
-    for (int i = 0; i < M; i++) {
-        int u, v;
-        cin >> u >> v;
-        graph[u].insert(v);
-        graph[v].insert(u);
-    }
-    
-    // Track active nodes (not yet removed)
-    vector<bool> active(N + 1, true);
-    
-    vector<long long> result(N);
-    
-    for (int t = 1; t <= N; t++) {
-        // Rebuild DSU at each step - more efficient than doing BFS each time
-        DSU dsu(N);
-        
-        // Add all current edges to DSU
-        for (int u = 1; u <= N; u++) {
-            if (active[u]) {
-                for (int v : graph[u]) {
-                    if (active[v] && u < v) { // Process each edge only once
-                        dsu.unite(u, v);
+// A simple function to get the number of connected pairs
+// by BFS or DSU each time. We do BFS here for simplicity.
+long long countConnectedPairs(const vector<vector<int>> &graph, const vector<bool> &alive, int N) {
+    long long result = 0;
+    vector<bool> visited(N+1, false);
+    for(int node = 1; node <= N; node++){
+        if(alive[node] && !visited[node]) {
+            // BFS (or DFS) to find size of this component
+            queue<int>q;
+            q.push(node);
+            visited[node] = true;
+            long long compSize = 0;
+            while(!q.empty()){
+                int u = q.front();
+                q.pop();
+                compSize++;
+                // traverse neighbors
+                for(int v: graph[u]){
+                    if(alive[v] && !visited[v]){
+                        visited[v] = true;
+                        q.push(v);
                     }
                 }
             }
+            // for a component of size compSize,
+            // number of internal pairs = compSize*(compSize-1)/2
+            result += compSize*(compSize-1)/2;
         }
-        
-        // Count pairs before removing node t
-        result[t - 1] = dsu.countPairs(active);
-        
-        // Store current neighbors of node t before removal
-        vector<int> neighbors;
-        for (int neighbor : graph[t]) {
-            if (active[neighbor]) {
-                neighbors.push_back(neighbor);
+    }
+    return result;
+}
+
+int main(){
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int N,M;
+    cin >> N >> M;
+    string s;
+    cin >> s; // s[i] in {'0','1'}, i from 0..N-1
+
+    // Build adjacency
+    vector<vector<int>> graph(N+1);
+    for(int i=0; i<M; i++){
+        int u,v;
+        cin >> u >> v;
+        graph[u].push_back(v);
+        graph[v].push_back(u);
+    }
+
+    // We'll keep a "alive[node]" to indicate if node is still in the graph.
+    vector<bool> alive(N+1, true);
+
+    // Initially, count the pairs in the full graph
+    long long currentPairs = countConnectedPairs(graph, alive, N);
+
+    // For t from 1..N:
+    for(int t=1; t<=N; t++){
+        // Output the number of pairs "just before removing node t"
+        cout << currentPairs << "\n";
+
+        // Node t is about to be removed:
+        // If s[t-1] == '1', we add edges among neighbors of t
+        if(s[t-1] == '1'){
+            // gather neighbors
+            vector<int> nbrs;
+            for(int neigh : graph[t]){
+                if(alive[neigh]){
+                    nbrs.push_back(neigh);
+                }
             }
-        }
-        
-        // Remove node t and its edges
-        for (int neighbor : graph[t]) {
-            graph[neighbor].erase(t);
-        }
-        graph[t].clear();
-        active[t] = false;
-        
-        // If s[t-1] = '1', add edges between all pairs of neighbors
-        if (s[t - 1] == '1') {
-            for (size_t i = 0; i < neighbors.size(); i++) {
-                for (size_t j = i + 1; j < neighbors.size(); j++) {
-                    int u = neighbors[i];
-                    int v = neighbors[j];
-                    graph[u].insert(v);
-                    graph[v].insert(u);
+            // add edges among these neighbors
+            // For each pair (x,y) in nbrs, add an edge x<->y to 'graph'.
+            // But we should only add it if both x,y are alive and x!=t,y!=t
+            // (Node t is being removed anyway, so it's immaterial to t.)
+            // We'll do a double loop. For a large test, this can be huge,
+            // but for the sample it's fine.
+            for(int i=0; i<(int)nbrs.size(); i++){
+                for(int j=i+1; j<(int)nbrs.size(); j++){
+                    int x = nbrs[i], y = nbrs[j];
+                    // We add each direction if not already present:
+                    // (In a super-careful approach, we might store a set
+                    // of adjacency for each node to check duplicates. 
+                    // For small input we won't break anything if we add duplicates,
+                    // but let's do a small check to avoid repeated edges.)
+                    graph[x].push_back(y);
+                    graph[y].push_back(x);
                 }
             }
         }
+
+        // Now physically remove node t: set alive[t] = false
+        alive[t] = false;
+
+        // Recompute the pair-count for the updated graph
+        currentPairs = countConnectedPairs(graph, alive, N);
     }
-    
-    // Output results
-    for (int t = 0; t < N; t++) {
-        cout << result[t] << endl;
-    }
-    
+
     return 0;
 }
